@@ -1,0 +1,9 @@
+{
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportUndefinedVariable": "none",
+    "reportMissingImports": "none",
+    "reportUnknownMemberType": "none",
+    "reportAttributeAccessIssue": "none"
+  },
+  "python.analysis.typeCheckingMode": "off"
+}
