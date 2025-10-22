@@ -307,6 +307,7 @@ def main():
         seed=2025
     )
 
+
     print("\n==== 结果 ====")
     print("最优距离：", round(res["best_distance"], 4))
     print("最优访问顺序（不含仓库0）：", res["best_tour"])

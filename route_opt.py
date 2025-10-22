@@ -11,6 +11,7 @@
 依赖：numpy, matplotlib
 """
 
+
 import math
 import random
 from dataclasses import dataclass
