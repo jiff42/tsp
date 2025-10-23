@@ -36,9 +36,7 @@ import matplotlib
 matplotlib.use("Agg")  # non-interactive backend
 import matplotlib.pyplot as plt
 
-from utlis import generate_random_coords, build_distance_matrix
-
-
+from utlis import generate_random_coords, build_distance_matrix, load_tsp_instance
 
 # -----------------------------
 # 内部工具
@@ -156,26 +154,6 @@ def save_instance_json(
 
     return out_path
 
-
-def load_tsp_instance(json_path: str) -> List[Tuple[float, float]]:
-    """
-    从 JSON 文件读取并返回 coords（List[Tuple[float, float]]）。
-    若包含 meta 信息会被忽略（读取方按需使用）。
-    """
-    with open(json_path, "r", encoding="utf-8") as f:
-        obj = json.load(f)
-    raw = obj.get("coords")
-    if not isinstance(raw, list):
-        raise ValueError("JSON 格式错误：缺少 'coords' 列表")
-    coords: List[Tuple[float, float]] = []
-    for item in raw:
-        if not isinstance(item, (list, tuple)) or len(item) != 2:
-            raise ValueError("JSON 格式错误：'coords' 中存在非法坐标元素")
-        x, y = float(item[0]), float(item[1])
-        coords.append((x, y))
-    return coords
-
-
 def save_tsp_instance(
     coords: List[Tuple[float, float]],
     image_dir: str = "figs_tsp_instances",
@@ -218,6 +196,13 @@ if __name__ == "__main__":
     plane_size = 500
     coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
     D = build_distance_matrix(coords)
+
+    # 读取随机生成的实例
+    json_path = "instances/tsp_instance_seed42_N40.json"
+    coords_loaded = load_tsp_instance(json_path)
+
+    # 检查加载的坐标是否与原始坐标一致
+    assert coords == coords_loaded, "加载的坐标与原始坐标不一致"
 
     # 2) 保存实例
     res = save_tsp_instance(

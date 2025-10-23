@@ -22,102 +22,10 @@ from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-# ==============================
-# 工具函数
-# ==============================
-
-def euclidean(a: Tuple[float, float], b: Tuple[float, float]) -> float:
-    """欧氏距离"""
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+from utlis import generate_random_coords, build_distance_matrix, tour_length
+from utlis_vis import save_tsp_figs
 
 
-def build_distance_matrix(coords: List[Tuple[float, float]]) -> np.ndarray:
-    """根据坐标构建距离矩阵 D[i,j]"""
-    n = len(coords)
-    D = np.zeros((n, n), dtype=float)
-    for i in range(n):
-        for j in range(i + 1, n):
-            d = euclidean(coords[i], coords[j])
-            D[i, j] = d
-            D[j, i] = d
-    return D
-
-
-def tour_length(tour: List[int], D: np.ndarray) -> float:
-    """
-    计算 TSP 回路长度。
-    tour 仅包含客户节点 [1..N]（不含仓库 0）。
-    总长度 = 0->tour[0] + sum(tour[i]->tour[i+1]) + tour[-1]->0
-    """
-    if not tour:
-        return 0.0
-    length = D[0, tour[0]]
-    for i in range(len(tour) - 1):
-        length += D[tour[i], tour[i + 1]]
-    length += D[tour[-1], 0]
-    return length
-
-
-# ==============================
-# 可视化
-# ==============================
-
-def plot_convergence(history: List[float], title: str = "SA Convergence", out_path: str = "sa_convergence.png"):
-    """Plot convergence curve and save to file instead of displaying.
-
-    out_path: output filename, defaults to 'sa_convergence.png'.
-    """
-    plt.figure()
-    plt.plot(range(len(history)), history)
-    plt.xlabel("Iteration")
-    plt.ylabel("Best Distance")
-    plt.title(title)
-    plt.grid(True)
-    # Save figure instead of showing on screen
-    plt.savefig(out_path, bbox_inches="tight", dpi=150)
-    plt.close()
-
-
-def plot_route(
-    coords: List[Tuple[float, float]],
-    tour: List[int],
-    title: str = "Best Route",
-    out_path: str = "sa_route.png",
-):
-    """根据坐标与 best_tour 画路线图"""
-    xs = [coords[0][0]] + [coords[i][0] for i in tour] + [coords[0][0]]
-    ys = [coords[0][1]] + [coords[i][1] for i in tour] + [coords[0][1]]
-    plt.figure()
-    plt.scatter([c[0] for c in coords], [c[1] for c in coords])
-    plt.plot(xs, ys)
-    for i, (x, y) in enumerate(coords):
-        plt.text(x, y, str(i))
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title(title)
-    plt.grid(True)
-    # Save figure instead of showing on screen
-    plt.savefig(out_path, bbox_inches="tight", dpi=150)
-    plt.close()
-
-
-# ==============================
-# 数据生成（随机 TSP 实例）
-# ==============================
-
-def generate_random_coords(n_customers: int = 30, plane_size: int = 100, seed: int = 7) -> List[Tuple[float, float]]:
-    """
-    生成坐标列表（含仓库 0）
-    仓库放在平面中心，其余客户随机散布。
-    """
-    rng = random.Random(seed)
-    coords = [(plane_size / 2.0, plane_size / 2.0)]  # depot at center
-    for _ in range(n_customers):
-        x = rng.uniform(0, plane_size)
-        y = rng.uniform(0, plane_size)
-        coords.append((x, y))
-    return coords
 
 
 # ==============================
@@ -226,7 +134,7 @@ def sa_tsp(
 
 def main():
     # 1) 生成随机实例
-    n_customers = 40
+    n_customers = 20
     plane_size = 500
     coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
     D = build_distance_matrix(coords)
@@ -247,16 +155,11 @@ def main():
     print("最优访问顺序（不含仓库0）：", res["best_tour"])
 
     # 3) 绘图改为保存为文件到目录 figs_tsp_sa（不显示图像）
-    out_dir = "figs_tsp_sa"
+    out_dir = "figs_tsp_sa1"
     os.makedirs(out_dir, exist_ok=True)
-    plot_convergence(
-        res["history"], title="SA-TSP Convergence",
-        out_path=os.path.join(out_dir, "sa_convergence.png")
-    )
-    plot_route(
-        coords, res["best_tour"], title="SA-TSP Best Route",
-        out_path=os.path.join(out_dir, "sa_route.png")
-    )
+    save_tsp_figs(history=res["history"], coords=coords, best_tour=res["best_tour"],
+              algo_tag="SA-TSP", save_dir=out_dir, conv_xlabel="Iteration",
+              conv_name="sa_convergence.png", route_name="sa_route.png", dpi=150)
 
 
 

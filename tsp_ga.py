@@ -25,45 +25,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import os
 
-# Directory to save figures (no display)
-SAVE_DIR = "figs_tsp_ga"
 
 
-# ==============================
-# 工具函数
-# ==============================
-
-def euclidean(a: Tuple[float, float], b: Tuple[float, float]) -> float:
-    """欧氏距离"""
-    return math.hypot(a[0] - b[0], a[1] - b[1])
-
-
-def build_distance_matrix(coords: List[Tuple[float, float]]) -> np.ndarray:
-    """根据坐标构建距离矩阵 D[i,j]"""
-    n = len(coords)
-    D = np.zeros((n, n), dtype=float)
-    for i in range(n):
-        for j in range(i + 1, n):
-            d = euclidean(coords[i], coords[j])
-            D[i, j] = d
-            D[j, i] = d
-    return D
-
-
-def tour_length(tour: List[int], D: np.ndarray) -> float:
-    """
-    计算 TSP 回路长度。
-    tour 仅包含客户节点 [1..N]（不含仓库 0）。
-    总长度 = 0->tour[0] + sum(tour[i]->tour[i+1]) + tour[-1]->0
-    """
-    if not tour:
-        return 0.0
-    length = D[0, tour[0]]
-    for i in range(len(tour) - 1):
-        length += D[tour[i], tour[i + 1]]
-    length += D[tour[-1], 0]
-    return length
-
+from utlis_save_ins import load_tsp_instance
+from utlis import generate_random_coords, build_distance_matrix, tour_length
+from utlis_vis import save_tsp_figs
 
 # ==============================
 # 遗传算法核心算子（排列编码）
@@ -227,73 +193,22 @@ def ga_tsp(
 
 
 # ==============================
-# 可视化
-# ==============================
-
-def plot_convergence(history: List[float], title: str = "GA Convergence"):
-    """Save convergence curve to SAVE_DIR instead of showing."""
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    plt.figure()
-    plt.plot(range(len(history)), history)
-    plt.xlabel("Generation")
-    plt.ylabel("Best Distance")
-    plt.title(title)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(SAVE_DIR, "convergence.png"), dpi=200, bbox_inches="tight")
-    plt.close()
-
-
-def plot_route(coords: List[Tuple[float, float]], tour: List[int], title: str = "Best Route"):
-    """根据坐标与 best_tour 画路线图并保存到 SAVE_DIR。"""
-    os.makedirs(SAVE_DIR, exist_ok=True)
-    xs = [coords[0][0]] + [coords[i][0] for i in tour] + [coords[0][0]]
-    ys = [coords[0][1]] + [coords[i][1] for i in tour] + [coords[0][1]]
-    plt.figure()
-    plt.scatter([c[0] for c in coords], [c[1] for c in coords])
-    plt.plot(xs, ys)
-    for i, (x, y) in enumerate(coords):
-        plt.text(x, y, str(i))
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title(title)
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(SAVE_DIR, "route.png"), dpi=200, bbox_inches="tight")
-    plt.close()
-
-
-# ==============================
-# 数据生成（随机 TSP 实例）
-# ==============================
-
-def generate_random_coords(n_customers: int = 30, plane_size: int = 100, seed: int = 7) -> List[Tuple[float, float]]:
-    """
-    生成坐标列表（含仓库 0）仓
-    库放在平面中心，其余客户随机散布。
-    """
-    rng = random.Random(seed)
-    coords = [(plane_size / 2.0, plane_size / 2.0)]  # depot at center
-    for _ in range(n_customers):
-        x = rng.uniform(0, plane_size)
-        y = rng.uniform(0, plane_size)
-        coords.append((x, y))
-    if len(set(coords)) < n_customers + 1:
-        raise ValueError("生成的坐标有重复，请调整参数重试。")
-
-    return coords
-
-
-# ==============================
 # 主程序（可直接运行）
 # ==============================
 
 def main():
     # 1) 生成随机实例
-    n_customers = 40         # 客户数量（可改）
+    n_customers = 50         # 客户数量（可改）
     plane_size = 500         # 坐标范围 0..plane_size
     coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
     D = build_distance_matrix(coords)
+
+    # # 1.5) 检查生成的坐标是否一致
+    # # 读取随机生成的实例
+    # json_path = "instances/tsp_instance_seed42_N40.json"
+    # coords_loaded = load_tsp_instance(json_path)
+    # # 检查加载的坐标是否与原始坐标一致
+    # print(f"coords == coords_loaded: {coords == coords_loaded}")
 
     # 2) 运行 GA
     res = ga_tsp(
@@ -312,9 +227,12 @@ def main():
     print("最优距离：", round(res["best_distance"], 4))
     print("最优访问顺序（不含仓库0）：", res["best_tour"])
 
-    # 3) 绘图（取消注释以显示图形）
-    plot_convergence(res["history"], title="GA-TSP Convergence")
-    plot_route(coords, res["best_tour"], title="GA-TSP Best Route")
+    # # 3) 绘图（取消注释以显示图形）
+    SAVE_DIR = "figs_tsp_ga1"
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    save_tsp_figs(history=res["history"], coords=coords, best_tour=res["best_tour"],
+              algo_tag="GA-TSP", save_dir=SAVE_DIR, conv_xlabel="Generation",
+              conv_name="convergence.png", route_name="route.png", dpi=200)
 
 
 if __name__ == "__main__":
