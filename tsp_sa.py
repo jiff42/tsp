@@ -14,6 +14,7 @@ TSP 模拟退火（SA）完整可运行示例
     %run tsp_sa.py
 """
 
+import time
 import math
 import os
 import random
@@ -22,6 +23,7 @@ from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utlis_save_ins import load_tsp_instance
 from utlis import generate_random_coords, build_distance_matrix, tour_length
 from utlis_vis import save_tsp_figs
 
@@ -99,12 +101,20 @@ def sa_tsp(
     history = [best_len]
     T = T0
 
+    # === 计时与计步（E） ===
+    t_start = time.perf_counter()
+    E_budget = 0
+    E_budget += 1  # 计算了 cur_len 一次
+    improve_log = [(0.0, E_budget, best_len)]   
+
     # 主循环
     for it in range(iterations):
         for _ in range(moves_per_temp):
             cand = random_neighbor(cur, rng)
             cand_len = tour_length(cand, D)
             delta = cand_len - cur_len
+            E_budget += 1  # 计算了 cand_len 一次
+
             if delta < 0:
                 # 更好，必收
                 cur, cur_len = cand, cand_len
@@ -116,6 +126,7 @@ def sa_tsp(
 
             if cur_len + 1e-12 < best_len:
                 best, best_len = cur[:], cur_len
+                improve_log.append((time.perf_counter() - t_start, E_budget, best_len))
 
         # 降温（几何衰减）
         T *= cooling_rate
@@ -125,7 +136,12 @@ def sa_tsp(
         if (it + 1) % 100 == 0:
             print(f"[Iter {it+1:6d}] T={T:.4f}, best = {best_len:.4f}")
 
-    return {"best_tour": best, "best_distance": best_len, "history": history}
+    return {"best_tour": best, 
+            "best_distance": best_len, 
+            "history": history,
+            "improve_log": improve_log,
+            "E_budget": E_budget,
+            "time_sec": time.perf_counter() - t_start}
 
 
 # ==============================
@@ -133,29 +149,54 @@ def sa_tsp(
 # ==============================
 
 def main():
-    # 1) 生成随机实例
-    n_customers = 20
-    plane_size = 500
-    coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
-    D = build_distance_matrix(coords)
+    use_benchmark = True
+
+    if use_benchmark == False:
+        # 1) 生成随机实例
+        n_customers = 40        # 客户数量（可改）
+        plane_size = 200         # 坐标范围 0..plane_size
+        coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
+        D = build_distance_matrix(coords)
+
+        # 1.5) 检查生成的坐标是否一致
+        # 读取随机生成的实例
+        json_path = "exp3/tsp_instance_seed42_N40.json"
+        coords_loaded = load_tsp_instance(json_path)
+        # 检查加载的坐标是否与原始坐标一致
+        print(f"coords == coords_loaded: {coords == coords_loaded}")
+    elif use_benchmark == True:
+        # 1. 读取 TSP 实例
+        print("loading eil76.tsp")
+        json_path = "exp7/tsp_instance_seed0_N76.json"
+        coords = load_tsp_instance(json_path)
+        D = build_distance_matrix(coords)
 
     # 2) 运行 SA
     res = sa_tsp(
         D,
-        iterations=25000,
-        T0=200.0,
-        cooling_rate=0.9993,
-        moves_per_temp=1,
+        iterations=10000,
+        T0=500.0,
+        cooling_rate=0.99,
+        moves_per_temp=100,
         seed=2025,
-        use_greedy_init=True
+        use_greedy_init=False
     )
 
     print("\n==== 结果 ====")
     print("最优距离：", round(res["best_distance"], 4))
     print("最优访问顺序（不含仓库0）：", res["best_tour"])
 
+    print(f"总时间: {res['time_sec']:.4f}s, 总E_budget: {res['E_budget']}")
+
+    import csv, os
+    os.makedirs("exp7", exist_ok=True)
+    with open("exp7/improve_log_sa_N76_seed2025.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["time_sec", "E_budget", "best_distance"])
+        w.writerows(res["improve_log"])
+
     # 3) 绘图改为保存为文件到目录 figs_tsp_sa（不显示图像）
-    out_dir = "figs_tsp_sa1"
+    out_dir = "exp7"
     os.makedirs(out_dir, exist_ok=True)
     save_tsp_figs(history=res["history"], coords=coords, best_tour=res["best_tour"],
               algo_tag="SA-TSP", save_dir=out_dir, conv_xlabel="Iteration",

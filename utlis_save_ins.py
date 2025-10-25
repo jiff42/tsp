@@ -191,25 +191,44 @@ def save_tsp_instance(
 
 
 if __name__ == "__main__":
-    # 1) 生成随机实例
-    n_customers = 40
-    plane_size = 500
-    coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
-    D = build_distance_matrix(coords)
+    
+    use_benchmark = True
 
-    # 读取随机生成的实例
-    json_path = "instances/tsp_instance_seed42_N40.json"
-    coords_loaded = load_tsp_instance(json_path)
+    if use_benchmark == False:
+        # 1) 生成随机实例
+        n_customers = 40
+        plane_size = 200
+        coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
+        D = build_distance_matrix(coords)
 
-    # 检查加载的坐标是否与原始坐标一致
-    assert coords == coords_loaded, "加载的坐标与原始坐标不一致"
+        # 读取随机生成的实例
+        # json_path = "instances/tsp_instance_seed42_N40.json"
+        # coords_loaded = load_tsp_instance(json_path)
 
-    # 2) 保存实例
-    res = save_tsp_instance(
-        coords,
-        image_dir="figs_tsp_instances",
-        data_dir="instances",
-        seed=42,
-        n_customers=n_customers,
-    )
-    print(res)
+        # 2) 保存实例
+        res = save_tsp_instance(
+            coords,
+            image_dir="exp3",
+            data_dir="exp3",
+            seed=42,
+            n_customers=n_customers,
+        )
+        print(res)
+    elif use_benchmark == True:
+        from tsplib_loader import load_tsplib_instance
+        # 1. 读取 TSP 实例
+        tsp_path = "tsp_lib/eil76.tsp"
+        tour_path = "tsp_lib/eil76.opt.tour"
+        coords, D, best_tour, best_distance = load_tsplib_instance(tsp_path, tour_path)
+        print(f"共 {len(coords)-1} 个城市，最优长度：{best_distance:.4f}")
+        print(f"前10个城市：{best_tour[:10]}")
+
+        # 2. 保存实例
+        res = save_tsp_instance(
+            coords,
+            image_dir="exp7",
+            data_dir="exp7",
+            seed=0,
+            n_customers=len(coords)-1,
+        )
+        print(res)

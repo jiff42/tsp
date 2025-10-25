@@ -24,9 +24,9 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from utlis_save_ins import load_tsp_instance
 
-
-SAVE_DIR = "figs_tsp_exact"   # 输出图片目录
+SAVE_DIR = "figs_tsp_exact3"   # 输出图片目录
 
 
 # ==============================
@@ -193,12 +193,19 @@ def brute_force_tsp(D: np.ndarray) -> Dict:
 
 def main():
     # —— 与 tsp_ga.py 保持“随机地图实例一致”：
-    n_customers = 20            # ★如需 Held–Karp，建议 <=22；若要暴力遍历建议 <=11
-    plane_size = 500            # 与你 GA 代码一致的坐标量级
+    n_customers = 40            # ★如需 Held–Karp，建议 <=22；若要暴力遍历建议 <=11
+    plane_size = 200            # 与你 GA 代码一致的坐标量级
     seed = 42                   # 与 tsp_ga.py 相同 seed，保证地图一致性
 
     coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=seed)
     D = build_distance_matrix(coords)
+
+    # 1.5) 检查生成的坐标是否一致
+    # 读取随机生成的实例
+    json_path = "exp3/tsp_instance_seed42_N40.json"
+    coords_loaded = load_tsp_instance(json_path)
+    # 检查加载的坐标是否与原始坐标一致
+    print(f"coords == coords_loaded: {coords == coords_loaded}")
 
     USE_HELD_KARP = True        # True=Held–Karp；False=暴力遍历
     t0 = time.perf_counter()

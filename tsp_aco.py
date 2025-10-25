@@ -15,6 +15,7 @@ TSP 蚁群算法（ACO）完整可运行示例
 """
 
 import math
+import time
 import random
 import os
 from typing import List, Tuple
@@ -22,6 +23,7 @@ from typing import List, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 
+from utlis_save_ins import load_tsp_instance
 from utlis import generate_random_coords, build_distance_matrix, tour_length
 from utlis_vis import save_tsp_figs
 
@@ -85,6 +87,11 @@ def aco_tsp(
 
     all_customers = list(range(1, n))
 
+    # === 计时与计步（E） ===
+    t_start = time.perf_counter()
+    E_budget = 0
+    improve_log = []
+
     for it in range(iterations):
         ant_tours: List[List[int]] = []
         ant_lengths: List[float] = []
@@ -106,10 +113,12 @@ def aco_tsp(
             L = tour_length(tour, D)
             ant_tours.append(tour)
             ant_lengths.append(L)
+            E_budget += 1
 
             if L + 1e-12 < best_dist:
                 best_dist = L
                 best_tour = tour[:]
+                improve_log.append((time.perf_counter() - t_start, E_budget, best_dist))
 
         # ---- 信息素更新
         # 蒸发
@@ -143,7 +152,12 @@ def aco_tsp(
         if (it + 1) % 100 == 0:
             print(f"[Iter {it+1:4d}] best = {best_dist:.4f}")
 
-    return {"best_tour": best_tour, "best_distance": best_dist, "history": history}
+    return {"best_tour": best_tour, 
+            "best_distance": best_dist, 
+            "history": history,
+            "E_budget": E_budget,
+            "time_sec": time.perf_counter() - t_start,
+            "improve_log": improve_log} 
 
 
 # ==============================
@@ -152,36 +166,60 @@ def aco_tsp(
 
 
 def main():
-    # 1) 生成随机实例
-    n_customers = 10
-    plane_size = 500
-    coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
-    D = build_distance_matrix(coords)
+    use_benchmark = True
+
+    if use_benchmark == False:
+        # 1) 生成随机实例
+        n_customers = 40        # 客户数量（可改）
+        plane_size = 200         # 坐标范围 0..plane_size
+        coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=42)
+        D = build_distance_matrix(coords)
+
+        # 1.5) 检查生成的坐标是否一致
+        # 读取随机生成的实例
+        json_path = "exp3/tsp_instance_seed42_N40.json"
+        coords_loaded = load_tsp_instance(json_path)
+        # 检查加载的坐标是否与原始坐标一致
+        print(f"coords == coords_loaded: {coords == coords_loaded}")
+    elif use_benchmark == True:
+        # 1. 读取 TSP 实例
+        print("loading eil76.tsp")
+        json_path = "exp7/tsp_instance_seed0_N76.json"
+        coords = load_tsp_instance(json_path)
+        D = build_distance_matrix(coords)
 
     # 2) 运行 ACO
     res = aco_tsp(
         D,
-        num_ants=50,
-        iterations=500,
+        num_ants=200,
+        iterations=5000,
         alpha=1.0,
-        beta=5.0,
+        beta=3,
         rho=0.5,
         Q=100.0,
         use_best_so_far=True,
-        best_weight=2.0,
+        best_weight=1.0,
         seed=2025
     )
 
     print("\n==== 结果 ====")
     print("最优距离：", round(res["best_distance"], 4))
     print("最优访问顺序（不含仓库0）：", res["best_tour"])
+    print(f"总时间: {res['time_sec']:.4f}s, 总E_budget: {res['E_budget']}")
+
+    import csv, os
+    os.makedirs("exp7", exist_ok=True)
+    with open("exp7/improve_log_aco_N76_seed2025.csv", "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["time_sec", "E_budget", "best_distance"])
+        w.writerows(res["improve_log"])
 
     # 3) 绘图（保持与 GA 脚本一致的接口与风格）
-    SAVE_DIR = "figs_tsp_aco1"
+    SAVE_DIR = "exp7"
     os.makedirs(SAVE_DIR, exist_ok=True)
     save_tsp_figs(history=res["history"], coords=coords, best_tour=res["best_tour"],
               algo_tag="ACO-TSP", save_dir=SAVE_DIR, conv_xlabel="Iteration",
-              conv_name="aco_convergence.png", route_name="aco_best_route.png", dpi=150)
+              conv_name="aco_convergence.png", route_name="aco_route.png", dpi=150)
 
 
 if __name__ == "__main__":

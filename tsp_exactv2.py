@@ -1,0 +1,316 @@
+# -*- coding: utf-8 -*-
+"""
+TSP 最优求解（Exact）：Held–Karp / 暴力遍历
+--------------------------------------------------
+风格与 tsp_ga.py 保持一致：
+1) 随机生成 TSP 节点（含仓库 0，seed=42 与 tsp_ga.py 一致）；
+2) 使用 Held–Karp（默认）或穷举遍历获得“全局最优”；
+3) 保存收敛/过程信息与最优路线图（非交互式后端）。
+
+注意：
+- Held–Karp 适合 n<=22 左右；穷举遍历建议 n<=11。
+- 若你想与 tsp_ga.py 完全同规模(如 n=40)，请只用 GA/ACO/SA；
+  Exact 方法在该规模不可行（指数级）。
+"""
+
+import math
+import random
+from typing import List, Tuple, Dict, Optional
+import itertools
+import time
+import os
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from utlis_save_ins import load_tsp_instance
+
+SAVE_DIR = "figs_tsp_exact3"   # 输出图片目录
+
+
+# ==============================
+# 工具函数（与 tsp_ga.py 风格一致）
+# ==============================
+
+def euclidean(a: Tuple[float, float], b: Tuple[float, float]) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def build_distance_matrix(coords: List[Tuple[float, float]]) -> np.ndarray:
+    n = len(coords)
+    D = np.zeros((n, n), dtype=float)
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = euclidean(coords[i], coords[j])
+            D[i, j] = d
+            D[j, i] = d
+    return D
+
+
+def tour_length(tour: List[int], D: np.ndarray) -> float:
+    """tour 仅包含客户 [1..N]，总长度= 0->tour[0] + ... + tour[-1]->0"""
+    if not tour:
+        return 0.0
+    s = D[0, tour[0]]
+    for i in range(len(tour) - 1):
+        s += D[tour[i], tour[i+1]]
+    s += D[tour[-1], 0]
+    return s
+
+
+def generate_random_coords(n_customers: int = 30, plane_size: int = 100, seed: int = 42) -> List[Tuple[float, float]]:
+    """与 tsp_ga.py 相同风格/接口；仓库在中心，其余均匀随机；seed=42 与 GA 默认一致"""
+    rng = random.Random(seed)
+    coords = [(plane_size/2.0, plane_size/2.0)]  # depot 0
+    for _ in range(n_customers):
+        x = rng.uniform(0, plane_size)
+        y = rng.uniform(0, plane_size)
+        coords.append((x, y))
+    return coords
+
+
+def plot_route(coords: List[Tuple[float, float]], tour: List[int], title: str = "Exact Best Route"):
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    xs = [coords[0][0]] + [coords[i][0] for i in tour] + [coords[0][0]]
+    ys = [coords[0][1]] + [coords[i][1] for i in tour] + [coords[0][1]]
+    plt.figure()
+    plt.scatter([c[0] for c in coords], [c[1] for c in coords])
+    plt.plot(xs, ys)
+    for i, (x, y) in enumerate(coords):
+        plt.text(x, y, str(i))
+    plt.title(title)
+    plt.xlabel("X"); plt.ylabel("Y"); plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(SAVE_DIR, "exact_route.png"), dpi=200, bbox_inches="tight")
+    plt.close()
+
+
+# ==============================
+# 1) Held–Karp 动态规划（Exact）
+#    返回最优回路长度与客户序列（不含仓库0）
+# ==============================
+
+def held_karp_tsp(D: np.ndarray) -> Dict:
+    """
+    状态 DP[S][j]：从 0 出发，访问 S（客户集合，位集表示），以 j 结尾的最短路长。
+    转移：DP[S][j] = min_{i in S-{j}} DP[S-{j}][i] + d(i,j)
+    最后加回到 0。
+    """
+    n = D.shape[0] - 1  # 客户数
+    if n <= 0:
+        return {"best_distance": 0.0, "best_tour": []}
+
+    # 客户编号 1..n -> 压缩到 0..n-1 用于位运算
+    ALL = 1 << n
+    INF = float("inf")
+
+    # ===== 修改部分开始 =====
+    # 用 NumPy 数组替代 Python 列表，大幅减少内存占用
+    dp = np.full((ALL, n), INF, dtype=np.float64)
+    parent = np.full((ALL, n), -1, dtype=np.int16)
+    # ===== 修改部分结束 =====
+
+    # 初始：只含单个城市 j 的集合 {j}
+    for j in range(n):
+        mask = 1 << j
+        dp[mask, j] = D[0, j + 1]  # 0->(j+1)
+
+    # 枚举子集大小 k=2..n
+    for k in range(2, n + 1):
+        for S in range(ALL):
+            if bin(S).count("1") != k:
+                continue
+            # 枚举结尾 j
+            for j in range(n):
+                if not (S & (1 << j)):
+                    continue
+                Sj = S ^ (1 << j)
+                if Sj == 0:
+                    continue
+                # 枚举倒数第二个 i
+                best_val = dp[S, j]
+                best_i = parent[S, j]
+                i_mask = Sj
+                while i_mask:
+                    i = (i_mask & -i_mask).bit_length() - 1
+                    i_mask ^= (1 << i)
+                    cand = dp[Sj, i] + D[i + 1, j + 1]
+                    if cand < best_val:
+                        best_val = cand
+                        best_i = i
+                dp[S, j] = best_val
+                parent[S, j] = best_i
+
+    # 终止：min_j dp[ALL-1][j] + d(j->0)
+    best_len = INF
+    last = None
+    S = ALL - 1
+    for j in range(n):
+        cand = dp[S, j] + D[j + 1, 0]
+        if cand < best_len:
+            best_len = cand
+            last = j
+
+    # 还原路径（客户索引转回 1..n）
+    tour_rev = []
+    cur = last
+    curS = S
+    while cur != -1 and cur is not None:
+        tour_rev.append(cur + 1)
+        nxt = int(parent[curS, cur])
+        curS ^= (1 << cur)
+        cur = nxt if nxt != -1 else None
+    best_tour = tour_rev[::-1]
+
+    return {"best_distance": float(best_len), "best_tour": best_tour}
+
+
+# ==============================
+# 2) 纯暴力遍历（Exact, 小 n）
+# ==============================
+
+def brute_force_tsp(D: np.ndarray) -> Dict:
+    """
+    对客户 1..n 的所有排列做穷举，返回最短回路。
+    仅适合 n<=11 左右。更大请用 Held–Karp。
+    """
+    n = D.shape[0] - 1
+    best_len = float("inf")
+    best_tour: List[int] = []
+
+    for perm in itertools.permutations(range(1, n+1)):
+        L = D[0, perm[0]] + sum(D[perm[i], perm[i+1]] for i in range(n-1)) + D[perm[-1], 0]
+        if L < best_len:
+            best_len = L
+            best_tour = list(perm)
+    return {"best_distance": best_len, "best_tour": best_tour}
+
+
+# 精确 TSP（OR-Tools CP-SAT + AddCircuit）
+# 依赖：pip install ortools
+from ortools.sat.python import cp_model
+
+def solve_tsp_exact_ortools(D: np.ndarray):
+    """
+    用 OR-Tools CP-SAT 的 AddCircuit 精确求解 TSP。
+    输入：D 为 n×n 距离矩阵（float），节点 0 为仓库。
+    输出：{"best_distance": float, "best_tour": List[int]}，best_tour 不含 0，仅客户顺序。
+    """
+    n = D.shape[0]
+    model = cp_model.CpModel()
+
+    # 为每条有向边(i->j, i!=j)创建0/1变量
+    x = {}
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            x[i, j] = model.NewBoolVar(f"x_{i}_{j}")
+
+    # AddCircuit：选择的弧形成“单一哈密顿回路”，自然禁止子回路
+    arcs = []
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            arcs.append((i, j, x[i, j]))
+    model.AddCircuit(arcs)
+
+    # 目标：最小化总路长
+    # 注意：CP-SAT只接受整数/线性目标，这里用缩放把距离转整数（避免精度噪声）
+    SCALE = 10_000
+    int_cost = {}
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                continue
+            int_cost[i, j] = int(round(D[i, j] * SCALE))
+    model.Minimize(sum(int_cost[i, j] * x[i, j] for i in range(n) for j in range(n) if i != j))
+
+    # 求解
+    solver = cp_model.CpSolver()
+    # 可选：限定时间/并行线程（按需开）
+    # solver.parameters.max_time_in_seconds = 300
+    # solver.parameters.num_search_workers = 8
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        raise RuntimeError("No solution found by CP-SAT")
+
+    # 提取回路：每个 i 恰好有一个后继 j
+    succ = [-1] * n
+    for i in range(n):
+        for j in range(n):
+            if i != j and solver.BooleanValue(x[i, j]):
+                succ[i] = j
+                break
+
+    # 从 0 出发按后继串起来，得到完整回路（含 0）
+    tour_full = [0]
+    cur = 0
+    seen = set([0])
+    while True:
+        cur = succ[cur]
+        if cur == -1:
+            raise RuntimeError("Broken tour reconstruction")
+        if cur == 0:
+            break
+        tour_full.append(cur)
+        if cur in seen:
+            raise RuntimeError("Subtour detected unexpectedly")
+        seen.add(cur)
+
+    # best_tour：不含仓库0，只保留客户顺序
+    best_tour = [v for v in tour_full if v != 0]
+    best_distance = sum(D[tour_full[i], tour_full[(i+1) % len(tour_full)]] for i in range(len(tour_full)))
+
+    return {"best_distance": float(best_distance), "best_tour": best_tour}
+
+
+# ==============================
+# 主程序（可直接运行）
+# ==============================
+
+def main():
+    # —— 与 tsp_ga.py 保持“随机地图实例一致”：
+    n_customers = 40            # ★如需 Held–Karp，建议 <=22；若要暴力遍历建议 <=11
+    plane_size = 200            # 与你 GA 代码一致的坐标量级
+    seed = 42                   # 与 tsp_ga.py 相同 seed，保证地图一致性
+
+    coords = generate_random_coords(n_customers=n_customers, plane_size=plane_size, seed=seed)
+    D = build_distance_matrix(coords)
+
+    # 1.5) 检查生成的坐标是否一致
+    # 读取随机生成的实例
+    json_path = "exp3/tsp_instance_seed42_N40.json"
+    coords_loaded = load_tsp_instance(json_path)
+    # 检查加载的坐标是否与原始坐标一致
+    print(f"coords == coords_loaded: {coords == coords_loaded}")
+
+    USE_method = 3        # 1=Held–Karp；2=暴力遍历, 3=OR-Tools CP-SAT (Exact) 
+    t0 = time.perf_counter()
+    if USE_method == 1:
+        res = held_karp_tsp(D)
+        tag = "Held-Karp"
+    elif USE_method == 2:
+        res = brute_force_tsp(D)
+        tag = "BruteForce"
+    elif USE_method == 3:
+        res = solve_tsp_exact_ortools(D)
+        tag = "OR-Tools CP-SAT (Exact)"
+    else:
+        raise ValueError("USE_method must be 1, 2, or 3")
+    t1 = time.perf_counter()
+
+    print("\n==== 最优结果（Exact）====")
+    print(f"方法：{tag}")
+    print(f"客户数：{n_customers}，用时：{t1 - t0:.3f}s")
+    print(f"最优距离：{res['best_distance']:.4f}")
+    print(f"最优访问顺序（不含仓库0）：{res['best_tour']}")
+
+    # 画最优路线
+    plot_route(coords, res["best_tour"], title=f"Exact TSP ({tag}) Best Route")
+
+
+if __name__ == "__main__":
+    main()
